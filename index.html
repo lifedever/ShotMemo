@@ -1,0 +1,564 @@
+<!DOCTYPE html>
+<html lang="zh-Hans">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>ShotMemo — 截图，从未如此高效。即将上线。</title>
+<meta name="description" content="ShotMemo 是 Memo 家族的新成员，一款为 macOS 打造的截图工具。别着急，它正在来的路上。" />
+<meta property="og:title" content="ShotMemo — 即将上线" />
+<meta property="og:description" content="Memo 家族 · for macOS · 截图，从未如此高效。" />
+<meta property="og:image" content="assets/og-cover.png" />
+<meta property="og:type" content="website" />
+<meta name="theme-color" content="#07151A" />
+<link rel="icon" type="image/x-icon" href="assets/favicon.ico" />
+<link rel="icon" type="image/svg+xml" href="assets/logo.svg" />
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,600;0,9..144,800;1,9..144,400&family=JetBrains+Mono:wght@400;500;700&family=Noto+Serif+SC:wght@400;700&display=swap" rel="stylesheet">
+
+<style>
+  :root {
+    --bg: #07151A;
+    --bg-layer: #0B1E24;
+    --paper: #EFE9DB;
+    --paper-dim: rgba(239, 233, 219, 0.64);
+    --paper-mute: rgba(239, 233, 219, 0.40);
+    --paper-line: rgba(239, 233, 219, 0.12);
+    --brand-top: #5DDFEA;
+    --brand-bot: #12B3C4;
+    --brand-deep: #0A7E90;
+    --ink: #F3EFE6;
+    --pulse: #4CD8A8;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+
+  body {
+    font-family: "Fraunces", "Noto Serif SC", Georgia, "Songti SC", serif;
+    background: var(--bg);
+    color: var(--ink);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+    font-feature-settings: "ss01", "ss02", "kern", "liga";
+    cursor: crosshair;
+    position: relative;
+    min-height: 100vh;
+  }
+
+  /* Layered atmospheric background */
+  .bg {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    background:
+      radial-gradient(1200px 800px at 50% 40%, rgba(18, 179, 196, 0.18), transparent 55%),
+      radial-gradient(900px 700px at 12% 108%, rgba(10, 126, 144, 0.22), transparent 55%),
+      radial-gradient(700px 500px at 92% -10%, rgba(93, 223, 234, 0.10), transparent 60%),
+      linear-gradient(180deg, var(--bg) 0%, var(--bg-layer) 100%);
+  }
+  .bg::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background-image:
+      linear-gradient(var(--paper-line) 1px, transparent 1px),
+      linear-gradient(90deg, var(--paper-line) 1px, transparent 1px);
+    background-size: 80px 80px;
+    mask-image: radial-gradient(ellipse at 50% 50%, black 30%, transparent 75%);
+    -webkit-mask-image: radial-gradient(ellipse at 50% 50%, black 30%, transparent 75%);
+    opacity: 0.35;
+  }
+  /* Grain overlay (pure CSS) */
+  .grain {
+    position: fixed;
+    inset: 0;
+    z-index: 1;
+    pointer-events: none;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='220' height='220'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.95 0 0 0 0 0.91 0 0 0 0 0.86 0 0 0 0.12 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+    opacity: 0.55;
+    mix-blend-mode: overlay;
+  }
+
+  /* Cursor-follow soft spotlight */
+  .spotlight {
+    position: fixed;
+    inset: 0;
+    z-index: 2;
+    pointer-events: none;
+    background: radial-gradient(280px 280px at var(--mx, 50%) var(--my, 50%),
+      rgba(93, 223, 234, 0.14) 0%, transparent 65%);
+    transition: background 100ms linear;
+  }
+
+  /* Page grid */
+  .page {
+    position: relative;
+    z-index: 3;
+    min-height: 100vh;
+    display: grid;
+    grid-template-rows: auto 1fr auto;
+    padding: 32px 40px;
+    gap: 24px;
+  }
+
+  /* ── Top bar ── */
+  .topbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .brand {
+    display: inline-flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .brand img {
+    width: 36px; height: 36px; border-radius: 8px;
+    box-shadow: 0 6px 18px -4px rgba(0,0,0,0.4);
+  }
+  .brand .name {
+    font-family: "Fraunces", serif;
+    font-weight: 600;
+    font-size: 19px;
+    letter-spacing: -0.01em;
+    color: var(--ink);
+  }
+  .brand .name em {
+    font-style: italic;
+    font-weight: 400;
+    color: var(--paper-dim);
+    margin-left: 6px;
+  }
+
+  .status {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 14px;
+    border: 1px solid var(--paper-line);
+    border-radius: 999px;
+    background: rgba(7, 21, 26, 0.45);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    font-family: "JetBrains Mono", ui-monospace, monospace;
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--paper-dim);
+  }
+  .status .dot {
+    width: 7px; height: 7px;
+    background: var(--pulse);
+    border-radius: 50%;
+    box-shadow: 0 0 0 0 rgba(76, 216, 168, 0.6);
+    animation: pulse 2s infinite;
+  }
+  @keyframes pulse {
+    0% { box-shadow: 0 0 0 0 rgba(76, 216, 168, 0.55); }
+    70% { box-shadow: 0 0 0 10px rgba(76, 216, 168, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(76, 216, 168, 0); }
+  }
+
+  /* ── Main hero ── */
+  .hero {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr);
+    align-items: center;
+    gap: 56px;
+    max-width: 1280px;
+    width: 100%;
+    margin: 0 auto;
+  }
+  @media (max-width: 960px) {
+    .hero { grid-template-columns: 1fr; gap: 40px; }
+  }
+
+  .marquee {
+    position: relative;
+    padding: 46px 52px 52px;
+  }
+  /* The four corner ticks of a selection marquee, drawn with border segments */
+  .marquee::before,
+  .marquee::after,
+  .marquee > .c-tl,
+  .marquee > .c-br {
+    content: "";
+    position: absolute;
+    width: 36px;
+    height: 36px;
+    border-color: var(--paper);
+    border-style: solid;
+  }
+  .marquee::before { /* top-left */
+    top: 0; left: 0;
+    border-width: 2px 0 0 2px;
+  }
+  .marquee::after { /* top-right */
+    top: 0; right: 0;
+    border-width: 2px 2px 0 0;
+  }
+  .marquee > .c-tl { /* bottom-left (reused class name, just alias) */
+    bottom: 0; left: 0;
+    border-width: 0 0 2px 2px;
+  }
+  .marquee > .c-br { /* bottom-right */
+    bottom: 0; right: 0;
+    border-width: 0 2px 2px 0;
+  }
+
+  /* Dimension badge above top-left corner, like ShotMemo's selection readout */
+  .dim {
+    position: absolute;
+    top: -28px;
+    left: -2px;
+    font-family: "JetBrains Mono", ui-monospace, monospace;
+    font-size: 11px;
+    color: var(--paper);
+    background: #000;
+    padding: 3px 9px;
+    border-radius: 4px;
+    letter-spacing: 0.04em;
+  }
+
+  .eyebrow {
+    font-family: "JetBrains Mono", ui-monospace, monospace;
+    font-size: 11px;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: var(--paper-mute);
+    margin-bottom: 22px;
+  }
+  .eyebrow span { color: var(--brand-top); }
+
+  h1 {
+    font-family: "Noto Serif SC", "Songti SC", serif;
+    font-weight: 400;
+    font-size: clamp(40px, 5.4vw, 74px);
+    line-height: 1.1;
+    letter-spacing: 0.01em;
+    color: var(--ink);
+  }
+  h1 .en {
+    display: block;
+    font-family: "Fraunces", serif;
+    font-style: italic;
+    font-weight: 400;
+    font-variation-settings: "opsz" 144;
+    font-size: 0.56em;
+    letter-spacing: -0.01em;
+    color: var(--brand-top);
+    background: linear-gradient(180deg, var(--brand-top), var(--brand-bot));
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    margin-bottom: 10px;
+  }
+
+  .sub {
+    margin-top: 26px;
+    font-family: "Fraunces", "Noto Serif SC", serif;
+    font-weight: 400;
+    font-style: italic;
+    font-size: clamp(18px, 1.6vw, 22px);
+    color: var(--paper-dim);
+    line-height: 1.5;
+    max-width: 620px;
+  }
+
+  .actions {
+    margin-top: 38px;
+    display: flex;
+    align-items: center;
+    gap: 22px;
+    flex-wrap: wrap;
+  }
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    padding: 13px 22px;
+    border-radius: 999px;
+    font-family: "JetBrains Mono", ui-monospace, monospace;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    text-decoration: none;
+    cursor: crosshair;
+    transition: transform 180ms ease, box-shadow 180ms ease, background 180ms ease;
+  }
+  .btn-primary {
+    background: linear-gradient(180deg, var(--brand-top), var(--brand-bot));
+    color: #041920;
+    box-shadow: 0 14px 30px -10px rgba(18, 179, 196, 0.55);
+  }
+  .btn-primary:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 20px 40px -12px rgba(18, 179, 196, 0.7);
+  }
+  .btn-ghost {
+    color: var(--paper);
+    border: 1px solid var(--paper-line);
+    background: transparent;
+  }
+  .btn-ghost:hover {
+    background: rgba(239, 233, 219, 0.05);
+    border-color: rgba(239, 233, 219, 0.3);
+  }
+  .btn svg { width: 14px; height: 14px; }
+
+  /* ── Product peek ── */
+  .peek {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    align-items: flex-start;
+    justify-self: end;
+    max-width: 640px;
+    width: 100%;
+  }
+  @media (max-width: 960px) {
+    .peek { justify-self: stretch; max-width: 100%; }
+  }
+  .peek-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    padding-left: 14px;
+    font-family: "JetBrains Mono", ui-monospace, monospace;
+    font-size: 11px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--paper-mute);
+  }
+  .dot-accent {
+    width: 6px; height: 6px;
+    background: var(--brand-top);
+    border-radius: 50%;
+    box-shadow: 0 0 10px rgba(93, 223, 234, 0.8);
+  }
+  .peek-frame {
+    position: relative;
+    width: 100%;
+    border-radius: 14px;
+    overflow: hidden;
+    background: #000;
+    border: 1px solid rgba(239, 233, 219, 0.08);
+    box-shadow:
+      0 40px 80px -30px rgba(0, 0, 0, 0.8),
+      0 10px 30px -10px rgba(0, 0, 0, 0.6),
+      inset 0 1px 0 rgba(239, 233, 219, 0.06);
+    transform: rotate(-0.6deg);
+    transition: transform 400ms cubic-bezier(.2,.7,.2,1);
+  }
+  .peek-frame:hover { transform: rotate(0deg) translateY(-4px); }
+  .peek-frame img {
+    display: block;
+    width: 100%;
+    height: auto;
+  }
+  /* Thin corner ticks on the peek frame, echoing the marquee */
+  .peek-frame::before,
+  .peek-frame::after {
+    content: "";
+    position: absolute;
+    width: 14px; height: 14px;
+    border: 1.5px solid var(--brand-top);
+    pointer-events: none;
+  }
+  .peek-frame::before { top: 10px; left: 10px; border-right: 0; border-bottom: 0; }
+  .peek-frame::after  { bottom: 10px; right: 10px; border-left: 0; border-top: 0; }
+
+  /* ── Bottom meta ── */
+  .bottom {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    gap: 24px;
+    font-family: "JetBrains Mono", ui-monospace, monospace;
+    font-size: 11px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--paper-mute);
+  }
+  .bottom a {
+    color: var(--paper-dim);
+    text-decoration: none;
+    border-bottom: 1px dashed rgba(239, 233, 219, 0.18);
+    padding-bottom: 2px;
+    transition: color 180ms ease, border-color 180ms ease;
+  }
+  .bottom a:hover { color: var(--brand-top); border-color: var(--brand-top); }
+  .bottom .fam {
+    display: inline-flex;
+    flex-direction: column;
+    gap: 6px;
+    line-height: 1.4;
+  }
+  .bottom .fam strong { color: var(--paper); font-weight: 700; letter-spacing: 0.18em; }
+  .bottom .right {
+    text-align: right;
+    display: inline-flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  /* ── Entry animations ── */
+  .fade-up { opacity: 0; transform: translateY(8px); animation: fadeUp 900ms cubic-bezier(.2,.7,.2,1) forwards; }
+  .fade-up.d1 { animation-delay: 60ms; }
+  .fade-up.d2 { animation-delay: 160ms; }
+  .fade-up.d3 { animation-delay: 280ms; }
+  .fade-up.d4 { animation-delay: 420ms; }
+  .fade-up.d5 { animation-delay: 580ms; }
+  .fade-up.d6 { animation-delay: 740ms; }
+  @keyframes fadeUp {
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  /* Marquee corners draw in */
+  .marquee::before,
+  .marquee::after,
+  .marquee > .c-tl,
+  .marquee > .c-br {
+    opacity: 0;
+    animation: cornerIn 700ms cubic-bezier(.2,.7,.2,1) forwards;
+  }
+  .marquee::before { animation-delay: 80ms; }
+  .marquee::after  { animation-delay: 180ms; }
+  .marquee > .c-br { animation-delay: 280ms; }
+  .marquee > .c-tl { animation-delay: 380ms; }
+  @keyframes cornerIn {
+    from { opacity: 0; transform: scale(0.6); }
+    to   { opacity: 1; transform: scale(1); }
+  }
+
+  @media (max-width: 700px) {
+    .page { padding: 20px 20px; }
+    .marquee { padding: 42px 28px 48px; }
+    .marquee::before, .marquee::after,
+    .marquee > .c-tl, .marquee > .c-br { width: 22px; height: 22px; }
+    .brand .name em { display: none; }
+    .bottom { font-size: 10px; letter-spacing: 0.1em; }
+    .status { font-size: 10px; padding: 6px 10px; }
+    .dim { top: -22px; font-size: 10px; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation: none !important;
+      transition: none !important;
+    }
+    .fade-up { opacity: 1; transform: none; }
+    .marquee::before, .marquee::after,
+    .marquee > .c-tl, .marquee > .c-br { opacity: 1; }
+    .status .dot { box-shadow: none; }
+    body { cursor: default; }
+  }
+</style>
+</head>
+<body>
+
+<div class="bg"></div>
+<div class="grain"></div>
+<div class="spotlight" id="spotlight"></div>
+
+<div class="page">
+
+  <!-- Top bar -->
+  <header class="topbar">
+    <a class="brand fade-up d1" href="/" aria-label="ShotMemo">
+      <img src="assets/logo.svg" alt="" />
+      <span class="name">ShotMemo <em>Memo Family</em></span>
+    </a>
+    <div class="status fade-up d2" role="status" aria-live="polite">
+      <span class="dot" aria-hidden="true"></span>
+      <span>STATUS · 即将上线</span>
+    </div>
+  </header>
+
+  <!-- Hero -->
+  <main class="hero">
+    <div class="marquee">
+      <span class="c-tl" aria-hidden="true"></span>
+      <span class="c-br" aria-hidden="true"></span>
+      <span class="dim" aria-hidden="true">524 × 380</span>
+
+      <div class="eyebrow fade-up d3">A <span>Memo Family</span> product · for macOS</div>
+
+      <h1 class="fade-up d4">
+        <span class="en">Shot. Marked. Shared.</span>
+        截图，从未<br/>如此高效。
+      </h1>
+
+      <p class="sub fade-up d5">别着急，它正在来的路上。<br/>A quiet little tool is taking shape — coming soon.</p>
+
+      <div class="actions fade-up d6">
+        <a class="btn btn-ghost" href="https://lifedever.com" target="_blank" rel="noopener">
+          了解开发者
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M7 17L17 7M9 7h8v8"/>
+          </svg>
+        </a>
+      </div>
+    </div>
+
+    <!-- Product peek: actual screenshot, slightly tilted, in a floating frame -->
+    <div class="peek fade-up d5" aria-label="ShotMemo preview">
+      <div class="peek-label">
+        <span class="dot-accent"></span>
+        <span>A glimpse · 一眼预览</span>
+      </div>
+      <div class="peek-frame">
+        <img src="assets/product-shot.png" alt="ShotMemo 截图 + 标注预览" />
+      </div>
+    </div>
+  </main>
+
+  <!-- Bottom meta -->
+  <footer class="bottom">
+    <div class="fam fade-up d6">
+      <strong>MEMO · FAMILY</strong>
+      <span>PasteMemo &nbsp;/&nbsp; TaskTick &nbsp;/&nbsp; ShotMemo</span>
+    </div>
+    <div class="right fade-up d6">
+      <span>© 2026 &nbsp;LIFEDEVER</span>
+      <span><a href="https://github.com/lifedever" target="_blank" rel="noopener">GITHUB</a> · <a href="https://lifedever.com" target="_blank" rel="noopener">LIFEDEVER.COM</a></span>
+    </div>
+  </footer>
+
+</div>
+
+<script>
+  // Cursor-follow spotlight. Throttled with rAF.
+  (function () {
+    if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    const spot = document.getElementById('spotlight');
+    let mx = window.innerWidth / 2, my = window.innerHeight / 2, tx = mx, ty = my, ticking = false;
+    function update() {
+      mx += (tx - mx) * 0.18;
+      my += (ty - my) * 0.18;
+      spot.style.setProperty('--mx', mx + 'px');
+      spot.style.setProperty('--my', my + 'px');
+      ticking = false;
+      if (Math.abs(tx - mx) > 0.5 || Math.abs(ty - my) > 0.5) {
+        ticking = true;
+        requestAnimationFrame(update);
+      }
+    }
+    window.addEventListener('pointermove', (e) => {
+      tx = e.clientX; ty = e.clientY;
+      if (!ticking) { ticking = true; requestAnimationFrame(update); }
+    }, { passive: true });
+    // Init centered
+    spot.style.setProperty('--mx', mx + 'px');
+    spot.style.setProperty('--my', my + 'px');
+  })();
+</script>
+
+</body>
+</html>
